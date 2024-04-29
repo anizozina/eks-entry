@@ -1,0 +1,29 @@
+region = "ap-northeast-1"
+access_entries = {
+    terraform_user = {
+      kubernetes_groups = []
+      principal_arn     = "arn:aws:iam::123456789012:user/$user"
+      type              = "STANDARD"
+      policy_associations = {
+        example = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+    admin_role = {
+      kubernetes_groups = []
+      type              = "STANDARD"
+      principal_arn     = "arn:aws:iam::123456789012:role/$role"
+      policy_associations = {
+        example = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+}

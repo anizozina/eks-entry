@@ -1,0 +1,10 @@
+version: "3.7"
+services:
+  app:
+    build:
+      context: ./
+    user: terraform
+    volumes:
+      - ./:/home/terraform/workspace:rw
+      - ~/.aws/credentials:/home/terraform/.aws/credentials:ro
+    tty: true
