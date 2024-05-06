@@ -1,9 +1,4 @@
-data "aws_iam_user" "terraform_user" {
-  user_name = "terraform"
-}
-data "aws_iam_role" "admins" {
-  name = "AWSReservedSSO_AdministratorAccess_cf5310046a6d383d"
-}
+
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "20.8.5"
@@ -12,41 +7,73 @@ module "eks" {
   cluster_version = "1.29"
   vpc_id          = module.vpc.vpc_id
   subnet_ids      = module.vpc.private_subnets
-  # 手元からControl Planeにアクセスしたいので。
-  cluster_endpoint_public_access = true
-  # EC2のインスタンスをData PlaneのNodeに使用する
-  eks_managed_node_group_defaults = {
-    ami_type       = "AL2_x86_64"
-    desired_size   = 1
-    instance_types = ["t3.small"]
-  }
-  eks_managed_node_groups = {
-    one = {
-      name           = "node-group-1"
-      instance_types = ["t3.small"]
-      min_size       = 1
-      max_size       = 3
-      desired_size   = 2
-    }
+  # Controle Planeへのアクセスはprivateにし、基本Cloud9を踏み台にする
+  cluster_endpoint_public_access = false
+  # Fargate
 
-    two = {
-      name           = "node-group-2"
-      instance_types = ["t3.small"]
-      min_size       = 1
-      max_size       = 2
-      desired_size   = 1
+  # Fargate profiles use the cluster primary security group so these are not utilized
+  # ref. https://github.com/terraform-aws-modules/terraform-aws-eks/blob/master/examples/fargate_profile/main.tf
+  create_cluster_security_group = false
+  create_node_security_group    = false
+
+  fargate_profiles = {
+    app = {
+      name = "app"
+      selectors = [
+        {
+          namespace = "backend"
+        },
+        {
+          namespace = "frontend"
+        }
+      ]
+
+      # Using specific subnets instead of the subnets supplied for the cluster itself
+      subnet_ids = module.vpc.private_subnets
+    }
+    argocd = {
+      name       = "argocd-profile"
+      subnet_ids = module.vpc.private_subnets
+      selectors = [
+        {
+          namespace = "argocd"
+      }]
+    }
+    kube-system = {
+      selectors = [
+        { namespace = "kube-system" }
+      ]
     }
   }
+
   # auth_mapは古い仕組みなので。
   authentication_mode = "API"
-  # 取り急ぎterraformで使っているユーザーは管理者権限でアクセスできるようにしておく
-  access_entries = var.access_entries
+
+  access_entries = merge(var.access_entries, {
+    cloud9 = {
+      kubernetes_groups = []
+      type              = "STANDARD"
+      principal_arn     = aws_iam_role.cloud9_role.arn
+      policy_associations = {
+        example = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+
+  })
   # ひとまず全部のログ収集しておく
   cluster_enabled_log_types = ["audit", "api", "authenticator", "controllerManager", "scheduler"]
 
   cluster_addons = {
+
     coredns = {
-      most_recent = true
+      configuration_values = jsonencode({
+        computeType = "Fargate"
+      })
     }
     kube-proxy = {
       most_recent = true
@@ -56,5 +83,23 @@ module "eks" {
       most_recent = true
     }
   }
+  cluster_security_group_id = aws_security_group.eks_security_group.id
+}
 
+resource "aws_security_group" "eks_security_group" {
+  name   = "bastion_cloud9_sg"
+  vpc_id = module.vpc.vpc_id
+
+  ingress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [data.aws_security_group.cloud9_sg.id]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }

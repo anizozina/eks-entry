@@ -19,7 +19,9 @@ module "vpc" {
   enable_nat_gateway   = true
   single_nat_gateway   = true
   enable_dns_hostnames = true
-
+  enable_dns_support = true
+  # for cloud9 
+  map_public_ip_on_launch = true
   public_subnet_tags = {
     # automatically added by eks. specify to prevent diffs
     "kubernetes.io/cluster/${local.name}" = "shared"
@@ -34,7 +36,7 @@ module "vpc" {
   }
   # For RDS 
   # database_subnets = [
-  #   "172.16.112.0/24", "172.16.128.0/24", "172.16.144.0/24"
+  #   "172.16.112.0/20", "172.16.128.0/20", "172.16.144.0/20"
   # ]
   create_database_subnet_group = true
   tags                         = local.tags
